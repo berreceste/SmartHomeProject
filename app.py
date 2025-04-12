@@ -1,5 +1,7 @@
 from flask import Flask, jsonify, request
 from models import db
+from models import db, Temperature, Room
+
 
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///smart_home.db'
@@ -15,13 +17,35 @@ def index():
 def temperature():
     if request.method == 'POST':
         data = request.json
-        derece = data.get('derece')
-        # Veritabanına derece kaydı yapılacak (sonraki adımda)
-        return jsonify({"message": "Derece ayarı güncellendi", "derece": derece})
-    else:
-        # Veritabanından derece bilgisi okunacak (sonraki adımda)
-        current_degree = 24.5  # Örnek değer
-        return jsonify({"current_degree": current_degree})
+        oda_adi = data.get('room')           # örn: "salon"
+        value = data.get('value')            # derece
+        target = data.get('target')          # hedef sıcaklık
+
+        # Oda varsa al, yoksa oluştur
+        room = Room.query.filter_by(name=oda_adi).first()
+        if not room:
+            room = Room(name=oda_adi)
+            db.session.add(room)
+            db.session.commit()
+
+        temp = Temperature(room_id=room.id, value=value, target=target)
+        db.session.add(temp)
+        db.session.commit()
+
+        return jsonify({"message": "Sıcaklık verisi kaydedildi!"})
+
+    elif request.method == 'GET':
+        temps = Temperature.query.all()
+        result = []
+        for t in temps:
+            result.append({
+                "oda": Room.query.get(t.room_id).name,
+                "deger": t.value,
+                "hedef": t.target,
+                "zaman": t.timestamp.strftime("%Y-%m-%d %H:%M:%S")
+            })
+        return jsonify(result)
+
 
 @app.route('/gas-status', methods=['GET'])
 def gas_status():
