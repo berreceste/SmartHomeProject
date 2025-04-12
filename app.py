@@ -1,6 +1,8 @@
 from flask import Flask, jsonify, request
 from models import db
 from models import db, Temperature, Room
+from models import Gas
+
 
 
 app = Flask(__name__)
@@ -46,12 +48,36 @@ def temperature():
             })
         return jsonify(result)
 
-
-@app.route('/gas-status', methods=['GET'])
+@app.route('/gas-status', methods=['GET', 'POST'])
 def gas_status():
-    # Sensörden gelecek veri sonraki adımlarda veritabanından okunacak
-    gas_level = "medium kritik"  # Örnek değer
-    return jsonify({"gas_level": gas_level})
+    if request.method == 'POST':
+        data = request.json
+        room_name = data.get('room')  # örn: mutfak
+        status = data.get('status')   # non-kritik / medium kritik / alarm
+
+        # Oda kontrolü
+        room = Room.query.filter_by(name=room_name).first()
+        if not room:
+            room = Room(name=room_name)
+            db.session.add(room)
+            db.session.commit()
+
+        gaz = Gas(room_id=room.id, status=status)
+        db.session.add(gaz)
+        db.session.commit()
+
+        return jsonify({"message": "Gaz verisi kaydedildi!"})
+
+    elif request.method == 'GET':
+        records = Gas.query.all()
+        result = []
+        for g in records:
+            result.append({
+                "oda": Room.query.get(g.room_id).name,
+                "durum": g.status,
+                "zaman": g.timestamp.strftime("%Y-%m-%d %H:%M:%S")
+            })
+        return jsonify(result)
 
 @app.route('/lights/<string:room>', methods=['POST'])
 def lights_control(room):
