@@ -2,6 +2,9 @@ from flask import Flask, jsonify, request
 from models import db
 from models import db, Temperature, Room
 from models import Gas
+from flask_mqtt import Mqtt
+import json
+
 
 
 
@@ -9,6 +12,13 @@ app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///smart_home.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db.init_app(app)
+# MQTT Konfigürasyonu
+app.config['MQTT_BROKER_URL'] = 'localhost'  # MQTT sunucusu
+app.config['MQTT_BROKER_PORT'] = 1883
+app.config['MQTT_KEEPALIVE'] = 60
+app.config['MQTT_TLS_ENABLED'] = False
+
+mqtt = Mqtt(app)
 
 
 @app.route('/')
@@ -102,3 +112,50 @@ with app.app_context():
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5001)
+
+@mqtt.on_connect()
+def handle_connect(client, userdata, flags, rc):
+    print("MQTT bağlantısı sağlandı.")
+    mqtt.subscribe('esp32/sensors/temperature')  # sıcaklık
+    mqtt.subscribe('esp32/sensors/gas')          # gaz
+
+@mqtt.on_message()
+def handle_mqtt_message(client, userdata, message):
+    topic = message.topic
+    payload = message.payload.decode()
+    print(f"MQTT mesaj alındı: {topic} => {payload}")
+
+    try:
+        data = json.loads(payload)
+
+        if topic == 'esp32/sensors/temperature':
+            room = data.get('room')
+            value = data.get('value')
+            target = data.get('target', None)
+
+            room_obj = Room.query.filter_by(name=room).first()
+            if not room_obj:
+                room_obj = Room(name=room)
+                db.session.add(room_obj)
+                db.session.commit()
+
+            new_temp = Temperature(room_id=room_obj.id, value=value, target=target)
+            db.session.add(new_temp)
+            db.session.commit()
+
+        elif topic == 'esp32/sensors/gas':
+            room = data.get('room')
+            status = data.get('status')
+
+            room_obj = Room.query.filter_by(name=room).first()
+            if not room_obj:
+                room_obj = Room(name=room)
+                db.session.add(room_obj)
+                db.session.commit()
+
+            new_gas = Gas(room_id=room_obj.id, status=status)
+            db.session.add(new_gas)
+            db.session.commit()
+
+    except Exception as e:
+        print(f"Hata oluştu: {e}")
