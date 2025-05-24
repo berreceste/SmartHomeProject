@@ -94,3 +94,15 @@ Thumbs.db
 
 # Mirror folder
 SmartHomeProjectSon-mirror/
+
+# Large files
+*.pyd
+*.so
+*.dll
+
+# Environment variables
+.env
+backend/.env
+
+# Face recognition data
+backend/data/faces/
